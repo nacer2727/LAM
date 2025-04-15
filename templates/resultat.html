@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Résultats du Patient</title>
+</head>
+<body>
+    <h1>Résultats pour {{ nom }} {{ prenom }}</h1>
+    <p><strong>Adresse :</strong> {{ adresse }}</p>
+    <p><strong>Email :</strong> {{ email }}</p>
+    <p><strong>Téléphone :</strong> {{ tel }}</p>
+
+    <h2>Analyses Effectuées</h2>
+    {% for analyse in resultats %}
+        <div>
+            <h3>Analyse ID : {{ analyse.analyse_id }}</h3>
+            <p><strong>Types d'analyses :</strong> {{ analyse.types_analyses | join(", ") }}</p>
+            <ul>
+                {% for resultat in analyse.resultats %}
+                    <li>
+                        <strong>{{ resultat.parameter }} :</strong> {{ resultat.valeur }}
+                        ({{ resultat.date }})
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endfor %}
+</body>
+</html>
