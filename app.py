@@ -87,7 +87,7 @@ def get_results(patient_barcode):
 
         # Renvoyer les résultats sous forme de page HTML
         return render_template(
-            "results.html",
+            "resultat.html",
             nom=patient.name,
             prenom=patient.prenom,
             adresse=patient.adresse,
