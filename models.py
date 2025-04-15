@@ -217,19 +217,17 @@ class AnalyseDetail(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     analyse_id = Column(Integer, ForeignKey('analyses.id'), nullable=False)
     parameter_id = Column(Integer, ForeignKey('parameters.parameter_id'), nullable=False)
-    product_id = Column(Integer, ForeignKey('products.id'), nullable=True)  # ID du produit (réactif, contrôle, calibrant) utilisé
     tube_id = Column(Integer, ForeignKey('tubes.tube_id'), nullable=True)  # Nouveau champ pour le type de tube
     notes = Column(TEXT, nullable=True)  # Notes supplémentaires sur cet élément d'analyse
     
     analyse = relationship("Analyse", back_populates="analyse_details")
     parameter = relationship("Parameter", back_populates="analyse_details")
-    product = relationship("Product", backref="analyses_utilisees")  # Relation avec la table Product
     tube = relationship("Tube", backref="analyse_details")  # Relation avec la table Tube
 
     
     def __repr__(self):
         return (f"<AnalyseDetail(id={self.id}, analyse_id={self.analyse_id}, parameter_id={self.parameter_id}, "
-                f"product_id={self.product_id}, fac_remise={self.fac_remise})>")
+                f"fac_remise={self.fac_remise})>")
     
 # Modèle pour la table 'resultat'
 class Resultat(Base):
