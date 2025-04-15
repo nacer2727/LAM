@@ -1,0 +1,26 @@
+# Ignorer les fichiers Python compilés
+__pycache__/
+*.pyc
+
+# Ignorer les fichiers générés par PyInstaller
+dist/
+build/
+
+# Ignorer les fichiers de configuration sensibles
+.env
+*.env
+
+# Ignorer les images QR générées
+qr_codes/
+
+# Ignorer les bases de données locales
+*.db
+*.sqlite3
+
+# Ignorer les fichiers IDE
+.vscode/
+.idea/
+
+# Ignorer les fichiers de logs
+logs/
+*.log

@@ -11,13 +11,20 @@ load_dotenv()
 
 # Initialisation de Flask
 app = Flask(__name__)
-
+application = app
 # Configuration de la base de données
 DATABASE_URL = os.getenv("DATABASE_URL")
 #DATABASE_URL = f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
 
 engine = create_engine(DATABASE_URL)
 Session = sessionmaker(bind=engine)
+
+@app.route('/')
+def index():
+    return  "hello"
+@app.route('/about')
+def about():
+    return  "laboratoire d'analyses médicales"
 
 @app.route('/<patient_barcode>', methods=['GET'])
 def get_results(patient_barcode):
@@ -32,8 +39,8 @@ def get_results(patient_barcode):
         analyses = (
             session.query(Analyse)
             .filter_by(patient_id=patient.id)
-            .filter(Analyse.state == "TERMINEE")
-            .filter(Analyse.montant_r == 0)
+            #.filter(Analyse.state == "TERMINEE")
+            #.filter(Analyse.montant_r == 0)
             .all()
         )
 
