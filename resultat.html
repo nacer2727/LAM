@@ -4,50 +4,27 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Résultats du Patient</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-        }
-        h1 {
-            color: #333;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
-        th {
-            background-color: #f4f4f4;
-        }
-    </style>
 </head>
 <body>
     <h1>Résultats pour {{ nom }} {{ prenom }}</h1>
-    {% if resultats %}
-        {% for analyse in resultats %}
-            <h2>Analyse ID: {{ analyse.analyse_id }}</h2>
-            <table>
-                <tr>
-                    <th>Paramètre</th>
-                    <th>Valeur</th>
-                    <th>Date</th>
-                </tr>
+    <p><strong>Adresse :</strong> {{ adresse }}</p>
+    <p><strong>Email :</strong> {{ email }}</p>
+    <p><strong>Téléphone :</strong> {{ tel }}</p>
+
+    <h2>Analyses Effectuées</h2>
+    {% for analyse in resultats %}
+        <div>
+            <h3>Analyse ID : {{ analyse.analyse_id }}</h3>
+            <p><strong>Types d'analyses :</strong> {{ analyse.types_analyses | join(", ") }}</p>
+            <ul>
                 {% for resultat in analyse.resultats %}
-                    <tr>
-                        <td>{{ resultat.parameter }}</td>
-                        <td>{{ resultat.valeur }}</td>
-                        <td>{{ resultat.date }}</td>
-                    </tr>
+                    <li>
+                        <strong>{{ resultat.parameter }} :</strong> {{ resultat.valeur }}
+                        ({{ resultat.date }})
+                    </li>
                 {% endfor %}
-            </table>
-        {% endfor %}
-    {% else %}
-        <p>Aucun résultat disponible.</p>
-    {% endif %}
+            </ul>
+        </div>
+    {% endfor %}
 </body>
 </html>
