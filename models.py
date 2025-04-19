@@ -1167,7 +1167,8 @@ class FactureSousTraitance(Base):
     # Relation automatique avec SousTraitance
     sous_traitances = relationship(
         "SousTraitance",
-        primaryjoin="FactureSousTraitance.analyse_id == foreign(SousTraitance.analyse_id)"
+        primaryjoin="FactureSousTraitance.analyse_id == foreign(SousTraitance.analyse_id)",
+        overlaps="analyse,sous_traitances"  # Explicitly declare overlapping relationships
     )
 
     cout_sous_traitance_total = Column(Float, nullable=True)  # Coût total
