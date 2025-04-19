@@ -148,7 +148,7 @@ class Analyse(Base):
     is_soustraitance = Column(Boolean, default=False)  # Indique si l'analyse inclut 
     # Nouvelle colonne pour la personne qui fait le prelevement (si prélèvement au labo)
     nurse_id = Column(Integer, ForeignKey('personals.id'), nullable=True)
-     # Nouveaux champs pour la validation
+    # Nouveaux champs pour la validation
     validated_by = Column(Integer, ForeignKey('personals.id'), nullable=True)
     validation_date = Column(DateTime, nullable=True)
     is_stamped = Column(Boolean, nullable=False, default=False) 
@@ -156,7 +156,7 @@ class Analyse(Base):
     stamped_at = Column(DateTime, nullable=True)  # Date de la griffe
     id_convention = Column(Integer, ForeignKey('conventions.id'), nullable=True)  # Clé étrangère vers la table Convention
     is_convention = Column(Boolean, default=False)  # Indique si l'analyse est liée à une convention
-
+    #codeqr_path = Column(String, nullable=True)  # Chemin vers le 
 
     patient = relationship("Patient", back_populates="analyses")
     analyse_details = relationship("AnalyseDetail", back_populates="analyse")
@@ -164,6 +164,7 @@ class Analyse(Base):
     validator = relationship("Personnel", foreign_keys=[validated_by], backref="analyses_validées")
     prelevement_types = relationship("PrelevementType", secondary=analyse_prelevements_table, backref="analyses") 
     tubes = relationship("Tube", secondary=analyse_tubes_table, backref="analyses")
+    convention = relationship("Convention", backref="analyses")  # Relation avec la table Convention
     frottis_results = relationship("Frottis", back_populates="analyse")
     nfs_results = relationship("NumerationFormuleSanguine", back_populates="analyse")
     groupage_results = relationship("GroupageSanguin", back_populates="analyse")
@@ -217,17 +218,19 @@ class AnalyseDetail(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     analyse_id = Column(Integer, ForeignKey('analyses.id'), nullable=False)
     parameter_id = Column(Integer, ForeignKey('parameters.parameter_id'), nullable=False)
+    product_id = Column(Integer, ForeignKey('products.id'), nullable=True)  # ID du produit (réactif, contrôle, calibrant) utilisé
     tube_id = Column(Integer, ForeignKey('tubes.tube_id'), nullable=True)  # Nouveau champ pour le type de tube
     notes = Column(TEXT, nullable=True)  # Notes supplémentaires sur cet élément d'analyse
     
     analyse = relationship("Analyse", back_populates="analyse_details")
     parameter = relationship("Parameter", back_populates="analyse_details")
+    product = relationship("Product", backref="analyses_utilisees")  # Relation avec la table Product
     tube = relationship("Tube", backref="analyse_details")  # Relation avec la table Tube
 
     
     def __repr__(self):
         return (f"<AnalyseDetail(id={self.id}, analyse_id={self.analyse_id}, parameter_id={self.parameter_id}, "
-                f"fac_remise={self.fac_remise})>")
+                f"product_id={self.product_id}, fac_remise={self.fac_remise})>")
     
 # Modèle pour la table 'resultat'
 class Resultat(Base):
@@ -281,6 +284,86 @@ class Reference(Base):
 Parameter.references = relationship("Reference", order_by=Reference.id, back_populates="parametre")
 
 
+class ProductType(enum.Enum):
+    REACTIF = "reactif"
+    CONTROL = "control"
+    CALIBRANT = "calibrant"
+
+# Modèle pour la table 'reactif , control, calibrant 
+class Product(Base):
+    __tablename__ = 'products'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    type = Column(Enum(ProductType), nullable=False)  # "reactif", "control", "calibrant"
+    parameter_id = Column(Integer, ForeignKey('parameters.parameter_id'), nullable=False)
+    marque = Column(String, nullable=False)  # Marque du produit
+    lot = Column(String, nullable=False)  # lot du produit
+    nombre_flacons = Column(Integer, nullable=False)  # Nombre de flacons dans le lot
+    nb_test = Column(Integer, nullable=False)  # Nombre de tests par flacon
+    expiration = Column(DateTime, nullable=False)  # date de peremption du produit
+    methode = Column(String, nullable=False)  # methode d'analyse du réactif
+    prix_coffret = Column(Float, nullable=False)  # Prix du flacon
+    quantity_remaining = Column(Integer, nullable=False, default=0)  # Quantité restante
+    min_threshold = Column(Integer, nullable=False, default=10)  # Seuil minimum d'alerte
+    supplier_id = Column(Integer, ForeignKey('fournisseurs.id'), nullable=True)  # Clé étrangère vers Fournisseur
+    supplier = relationship("Fournisseur", backref="products")  # Relation avec la table Fournisseur
+    parameter = relationship("Parameter", backref="products")
+
+
+    def __repr__(self):
+        return (f"<type(id={self.id}, type={self.type.value}, parameter_id='{self.parameter_id}', marque='{self.marque}', "
+                f"lot='{self.lot}', expiration='{self.expiration}', "
+                f"nombre_flacons={self.nombre_flacons}, prix_coffret={self.prix_coffret})>")
+
+
+
+class Stock(Base):
+    __tablename__ = 'stocks'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    product_id = Column(Integer, ForeignKey('products.id'), nullable=False)
+    quantite_actuelle = Column(Integer, nullable=False)
+    date_dernier_achat = Column(DateTime, nullable=False, default=datetime.now)
+
+    product = relationship("Product", backref="stocks")
+
+
+
+class ControlValue(Base):
+    __tablename__ = 'control_values'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    product_id = Column(Integer, ForeignKey('products.id'), nullable=False)  # Lien avec la table Product
+    type = Column(String, nullable=False)  # "normal" ou "pathologique"
+    valeur_min = Column(Float, nullable=False)  # Valeur minimale acceptable
+    valeur_max = Column(Float, nullable=False)  # Valeur maximale acceptable
+    ecart_type = Column(Float, nullable=False)  # Écart-type du contrôle
+    date_dernier_controle = Column(DateTime, nullable=True)  # Date du dernier contrôle effectué
+
+    
+    product = relationship("Product", backref="control_values")
+
+    def __repr__(self):
+        return (f"<ControlValue(id={self.id}, product_id={self.product_id}, type='{self.type}', "
+                f"valeur_min={self.valeur_min}, valeur_max={self.valeur_max})>")
+
+class CalibrantValue(Base):
+    __tablename__ = 'calibrant_values'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    product_id = Column(Integer, ForeignKey('products.id'), nullable=False)  # Lien avec la table Product
+    level = Column(String, nullable=False)  # Niveau du calibrant (ex. : "niveau_1", "niveau_2")
+    valeur_cal = Column(Float, nullable=False)  # Valeur maximale acceptable
+    date_dernier_calibration = Column(DateTime, nullable=True)  # Date du derniere calibration effectué
+
+    product = relationship("Product", backref="calibrant_values")
+
+    def __repr__(self):
+        return (f"<CalibrantValue(id={self.id}, product_id={self.product_id}, level='{self.level}', "
+                f"valeur_cal={self.valeur_cal})>")
+
+
+
+
 # Modèle pour la table 'parameter_groups'
 class ParameterGroup(Base):
     __tablename__ = 'parameter_groups'
@@ -305,6 +388,20 @@ group_parameters_table = Table(
     Column('parameter_id', Integer, ForeignKey('parameters.parameter_id'), primary_key=True)
 )
 
+class AuditLog(Base):
+    __tablename__ = 'audit_logs'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('personals.id'), nullable=False)  # ID du personnel ayant effectué l'action
+    action = Column(String, nullable=False)  # Type d'action (consultation, modification, suppression, etc.)
+    details = Column(TEXT, nullable=True)  # Détails supplémentaires sur l'action
+    timestamp = Column(DateTime, nullable=False, default=datetime.now)  # Horodatage de l'action
+
+    # Relation avec la table 'personals'
+    user = relationship("Personnel", backref="audit_logs")
+
+    def __repr__(self):
+        return (f"<AuditLog(id={self.id}, user='{self.user.nom} {self.user.prenom}', "
+                f"action='{self.action}', details='{self.details}', timestamp='{self.timestamp}')>")
 
 class Paiement(Base):
     __tablename__ = 'paiements'
@@ -316,7 +413,92 @@ class Paiement(Base):
 
     analyse = relationship("Analyse", backref="paiements")
 
+class Rappel(Base):
+    __tablename__ = 'rappels'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    patient_id = Column(String, ForeignKey('patients.id'), nullable=True)
+    personnel_id = Column(Integer, ForeignKey('personals.id'), nullable=True)
+    message = Column(TEXT, nullable=False)
+    date_rappel = Column(DateTime, nullable=False)
+    statut = Column(String, nullable=False, default="non_envoye")  # "envoye" ou "non_envoye"
 
+    patient = relationship("Patient", backref="rappels")
+    personnel = relationship("Personnel", backref="rappels")
+
+class Permission(Base):
+    __tablename__ = 'permissions'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    role = Column(String, nullable=False)
+    action = Column(String, nullable=False)  # Exemple : "consulter_patient", "modifier_resultat"
+    personnel_id = Column(Integer, ForeignKey('personals.id'), nullable=False)
+    personnel = relationship("Personnel", backref="permissions")
+
+#Table pour synchroniser les données si le laboratoire travaille avec plusieurs sites 
+class SyncLog(Base):
+    __tablename__ = 'sync_logs'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    table_name = Column(String, nullable=False)  # Nom de la table synchronisée
+    record_id = Column(Integer, nullable=False)  # ID du record synchronisé
+    date_sync = Column(DateTime, nullable=False, default=datetime.now)
+    statut = Column(String, nullable=False, default="en_attente")  # "reussi" ou "echec"
+
+class ControlResult(Base):
+    __tablename__ = 'control_results'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    product_id = Column(Integer, ForeignKey('products.id'), nullable=False)  # Lien avec la table Product
+    parameter_id = Column(Integer, ForeignKey('parameters.parameter_id'), nullable=False)
+    control_date = Column(DateTime, nullable=False, default=datetime.now)  # Date du contrôle réalisé
+    valeur_obtenue = Column(Float, nullable=False)  # Valeur mesurée lors du contrôle
+    is_within_range = Column(Boolean, nullable=False)  # Indique si la valeur est dans la plage acceptable
+    comments = Column(TEXT, nullable=True)  # Commentaires sur le résultat du contrôle
+
+    product = relationship("Product", backref="control_results")
+    parameter = relationship("Parameter", backref="control_results")
+    
+    def __repr__(self):
+        return (f"<ControlResult(id={self.id}, product_id={self.product_id}, "
+                f"parameter_id={self.parameter_id}, control_date='{self.control_date}', "
+                f"valeur_obtenue={self.valeur_obtenue}, is_within_range={self.is_within_range})>")
+    
+    def validate_value(self, session):
+        """Valide automatiquement si la valeur obtenue est dans la plage acceptable."""
+        control_values = session.query(ControlValue).filter_by(control_id=self.product.id).first()
+        if control_values:
+            self.is_within_range = (control_values.valeur_min <= self.valeur_obtenue <= control_values.valeur_max)
+        else:
+            self.is_within_range = False
+
+    __table_args__ = (
+        Index('ix_control_results_product_id', 'product_id'),
+        Index('ix_control_results_parameter_id', 'parameter_id'),
+        Index('ix_control_results_control_date', 'control_date'),
+    )
+
+
+class CalibrationResult(Base):
+    __tablename__ = 'calibration_results'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    product_id = Column(Integer, ForeignKey('products.id'), nullable=False)  # Lien avec la table Product
+    parameter_id = Column(Integer, ForeignKey('parameters.parameter_id'), nullable=False)  # Paramètre associé
+    calibration_date = Column(DateTime, nullable=False, default=datetime.now)  # Date de la calibration
+    level = Column(String, nullable=False)  # Niveau du calibrant utilisé (ex. : "niveau_1", "niveau_2")
+    valeur_obtenue = Column(Float, nullable=False)  # Valeur mesurée lors de la calibration
+    valeur_theorique = Column(Float, nullable=True)  # Valeur théorique attendue
+    difference = Column(Float, nullable=False)  # Différence entre la valeur obtenue et la valeur théorique
+    is_successful = Column(Boolean, nullable=False)  # Indique si la calibration a réussi
+    comments = Column(TEXT, nullable=True)  # Commentaires sur la calibration
+
+    # Relations
+    product = relationship("Product", backref="calibration_results")
+    parameter = relationship("Parameter", backref="calibration_results")
+    def __repr__(self):
+        return (f"<CalibrationResult(id={self.id}, product_id={self.product_id}, "
+                f"parameter_id={self.parameter_id}, calibration_date='{self.calibration_date}', "
+                f"level={self.level}, valeur_obtenue={self.valeur_obtenue}, "
+                f"is_successful={self.is_successful})>")
+    
 class Tube(Base):
     __tablename__ = 'tubes'
     tube_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -575,6 +757,18 @@ group_antibiotiques_table = Table(
 
 
 
+
+#suivre les importations de résultats 
+class ImportLog(Base):
+    __tablename__ = 'import_logs'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source = Column(String, nullable=False)  # Exemple : "Cobas"
+    file_name = Column(String, nullable=True)  # Nom du fichier importé
+    import_date = Column(DateTime, nullable=False, default=datetime.now)
+    status = Column(String, nullable=False)  # Exemple : "SUCCESS", "ERROR"
+    error_message = Column(TEXT, nullable=True)  # Détails en cas d'erreur
+
+
 class Barcode(Base):
     __tablename__ = 'barcodes'
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -590,6 +784,14 @@ class Barcode(Base):
 
     def __repr__(self):
         return f"<Barcode {self.barcode_value}>"
+
+class ScanLog(Base):
+    __tablename__ = 'scan_logs'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    barcode_value = Column(String, nullable=False)
+    scanned_at = Column(DateTime, nullable=False, default=datetime.now)
+    operator_id = Column(Integer, ForeignKey('personals.id'), nullable=False)
+    result_id = Column(Integer, ForeignKey('resultat.id'), nullable=True)
 
 
 class Frottis(Base):
@@ -732,6 +934,103 @@ class GroupageSanguin(Base):
             f"anticorps_irreguliers={self.anticorps_irreguliers})>")
 
 
+class Convention(Base):
+    __tablename__ = 'conventions'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    convention_name = Column(String, nullable=False, unique=True)  # Nom de la convention
+    etablissement = Column(String, nullable=False)  # Établissement partenaire (ex. "Hôpital X", "Entreprise Y")
+    remise = Column(Float, nullable=False)  # Remise en pourcentage (ex. 10 pour 10%)
+    numero = Column(String, nullable=False, unique=True)  # Numéro de référence de la convention
+    date_fin = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.now)  # Date de création
+    updated_at = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)  # Dernière mise à jour
+
+    def __repr__(self):
+        return (f"<Convention(id={self.id}, convention_name='{self.convention_name}', "
+                f"etablissement='{self.etablissement}', remise={self.remise}%, numero='{self.numero}')>")
+ 
+class FactureConvention(Base):
+    __tablename__ = 'factures_conventions'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    convention_id = Column(Integer, ForeignKey('conventions.id'), nullable=False)  # Lien avec la convention
+    reference_facture = Column(String, nullable=False, unique=True)  # Référence unique de la facture
+    debut_facture = Column(DateTime, nullable=True)  # Date de début de la période facturée
+    fin_facture = Column(DateTime, nullable=True)  # Date de fin de la période facturée
+    montant_total = Column(Float, nullable=False)  # Montant total de la facture
+    montant_paye = Column(Float, nullable=False, default=0.0)  # Montant déjà payé
+    date_paiement_complet = Column(DateTime, nullable=True)  # Date où la facture est totalement payée
+    statut_paiement = Column(String, nullable=False, default="en_attente")  # Statut : "en_attente", "paye_partiel", "paye"
+    solde_restant = Column(Float, nullable=False, default=0.0)  # Montant restant à payer
+    created_at = Column(DateTime, nullable=False, default=datetime.now)  # Date de création
+    updated_at = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)  # Dernière mise à jour
+
+    # Relation avec la convention
+    convention = relationship("Convention", backref="factures")
+
+    def __repr__(self):
+        return (f"<FactureConvention(id={self.id}, reference_facture='{self.reference_facture}', "
+                f"montant_total={self.montant_total}, statut_paiement='{self.statut_paiement}')>")
+    
+class AnalyseFacture(Base):
+    __tablename__ = 'analyses_factures'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    facture_id = Column(Integer, ForeignKey('factures_conventions.id'), nullable=False)  # Lien avec la facture
+    convention_id = Column(Integer, ForeignKey('conventions.id'), nullable=False)  # Lien avec la convention
+    analyse_id = Column(Integer, ForeignKey('analyses.id'), nullable=False)  # Lien avec l'analyse
+    montant = Column(Float, nullable=False)  # Montant spécifique à cette analyse
+    statut_paiement = Column(String, nullable=False, default="en_attente")  # Statut : "en_attente", "paye"
+    created_at = Column(DateTime, nullable=False, default=datetime.now)  # Date de création
+    updated_at = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)  # Dernière mise à jour
+
+    # Relations
+    facture = relationship("FactureConvention", backref="analyses")
+    analyse = relationship("Analyse", backref="factures")
+
+    def __repr__(self):
+        return (f"<AnalyseFacture(id={self.id}, facture_id={self.facture_id}, "
+                f"analyse_id={self.analyse_id}, montant={self.montant}, "
+                f"statut_paiement='{self.statut_paiement}')>")
+
+class SuiviPaiementConvention(Base):
+    __tablename__ = 'suivi_paiements_convention'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    facture_id = Column(Integer, ForeignKey('factures_conventions.id'), nullable=False)  # Lien avec la facture
+    convention_id = Column(Integer, ForeignKey('conventions.id'), nullable=False)  # Lien avec la convention
+    montant_paye = Column(Float, nullable=False)  # Montant payé pour cette facture
+    mode_paiement = Column(String, nullable=True)  # Ex: "Virement", "Chèque", "Espèces"
+    date_paiement = Column(DateTime, nullable=False, default=datetime.now)  # Date du paiement
+    reference_paiement = Column(String, nullable=True)  # Référence du paiement (chèque, virement, etc.)
+    created_at = Column(DateTime, nullable=False, default=datetime.now)  # Date de création
+    updated_at = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)  # Dernière mise à jour
+
+    # Relation avec la facture
+    facture = relationship("FactureConvention", backref="paiements")
+
+    def __repr__(self):
+        return (f"<SuiviPaiementConvention(id={self.id}, facture_id={self.facture_id}, "
+                f"montant_paye={self.montant_paye}, mode_paiement='{self.mode_paiement}', "
+                f"date_paiement='{self.date_paiement}')>")
+# Ajoutez ici le décorateur et la fonction d'événement
+@event.listens_for(SuiviPaiementConvention, 'after_insert')
+def update_solde_restant(mapper, connection, target):
+    Session = sessionmaker(bind=connection)
+    session = Session()
+    facture = session.query(FactureConvention).get(target.facture_id)
+    if facture:
+        facture.solde_restant = max(0, facture.montant_total - facture.montant_paye)
+        session.commit()
+        
+class Transaction(Base):
+    __tablename__ = 'transactions'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    paiement_convention_id = Column(Integer, ForeignKey('suivi_paiements_convention.id'), nullable=False)
+    montant = Column(Float, nullable=False)
+    mode_paiement = Column(String, nullable=True)
+    date_transaction = Column(DateTime, nullable=False, default=datetime.now)
+    reference_transaction = Column(String, nullable=True)
+
+    # Relation avec SuiviPaiementConvention
+    paiement = relationship("SuiviPaiementConvention", backref="transactions")
 
 
 
@@ -757,4 +1056,134 @@ class Laboratoire(Base):
         return f"<Laboratoire(id={self.id}, nom='{self.nom}', email='{self.email}')>"
 
 
+class Fournisseur(Base):
+    __tablename__ = 'fournisseurs'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    nom = Column(String, nullable=False)  # Nom du fournisseur
+    adresse = Column(String, nullable=True)  # Adresse du fournisseur
+    email = Column(String, nullable=True)  # Email du fournisseur
+    telephone1 = Column(String, nullable=True)  # Numéro de téléphone
+    telephone2 = Column(String, nullable=True)  # Numéro de téléphone
+    site_web = Column(String, nullable=True)  # Site web du fournisseur
+    notes = Column(TEXT, nullable=True)  # Notes supplémentaires
+    numeros_services = Column(String, nullable=True)
+    def __repr__(self):
+        return f"<Fournisseur(id={self.id}, nom='{self.nom}', email='{self.email}')>"
 
+class Service(Base):
+    __tablename__ = 'produits_services'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    numero_service = Column(Integer, nullable=False, unique=True) 
+    nom = Column(String, nullable=False)  # Nom du produit/service
+    description = Column(TEXT, nullable=True)  # Description du produit/service
+    fournisseur_id = Column(Integer, ForeignKey('fournisseurs.id'), nullable=False)  
+    fournisseur = relationship('Fournisseur', backref='produits_services')  # Relation avec Fournisseur
+
+    def __repr__(self):
+        return f"<ProduitService(id={self.id}, nom='{self.nom}', fournisseur={self.fournisseur.nom})>"
+
+
+class FactureAchat(Base):
+    __tablename__ = 'factures_achat'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    numero_facture = Column(String, unique=True, nullable=False)  
+    date_facture = Column(DateTime, nullable=False)  
+    montant_total = Column(Float, nullable=False)  
+    montant_payé = Column(Float, default=0.0)  # Montant déjà payé
+    date_paiement = Column(DateTime, nullable=True)  # Dernier paiement effectué
+    mode_paiement = Column(String, nullable=True)  # Virement, Chèque, Espèces...
+    delai_paiement = Column(DateTime, nullable=True)  # Date limite de paiement
+    fichier_facture = Column(String, nullable=True)  # Chemin du fichier PDF/image
+    fournisseur_id = Column(Integer, ForeignKey('fournisseurs.id'), nullable=False)  
+    statut_paiement = Column(String, nullable=False, default='Non payé')  # "Non payé", "Partiellement payé", "Payé"
+    etat_facture = Column(String, nullable=False, default='En attente')  # "En attente", "Validée", "Annulée"
+    validé_par = Column(String, nullable=True)  # Qui a validé la facture ?
+    notes = Column(TEXT, nullable=True)  
+
+    fournisseur = relationship('Fournisseur', backref='factures')  
+
+    def __repr__(self):
+        return f"<FactureAchat(id={self.id}, numero='{self.numero_facture}', montant={self.montant_total}, paiement='{self.statut_paiement}', etat='{self.etat_facture}')>"
+
+
+class LaboratoireSousTraitant(Base):
+    __tablename__ = 'laboratoire_sous_traitants'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    nom = Column(String, nullable=False)  # Nom du laboratoire sous-traitant
+    adresse = Column(String, nullable=True)  # Adresse physique
+    email = Column(String, nullable=True)  # Email de contact
+    telephone1 = Column(String, nullable=True)  # Numéro de téléphone
+    telephone2 = Column(String, nullable=True)  # Numéro de téléphone
+    site_web = Column(String, nullable=True)  # Site web (optionnel)
+    specialite = Column(String, nullable=True)  # Spécialité ou type de services proposés
+    contrat_actif = Column(Boolean, default=True)  # Indique si le contrat est actif
+    date_debut_contrat = Column(DateTime, nullable=True)  # Date de début du contrat
+    date_fin_contrat = Column(DateTime, nullable=True)  # Date de fin du contrat
+    notes = Column(TEXT, nullable=True)  # Notes supplémentaires
+
+    def __repr__(self):
+        return f"<LaboratoireSousTraitant(id={self.id}, nom='{self.nom}', email='{self.email}')>"
+
+class SousTraitance(Base):
+    __tablename__ = 'sous_traitance'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    labo_sous_traitant_id = Column(Integer, ForeignKey('laboratoire_sous_traitants.id'), nullable=True)  # Laboratoire sous-traitant
+    analyse_id = Column(Integer, ForeignKey('analyses.id'), nullable=False)  # Analyse principale
+    analyse_sous_traitee_id = Column(Integer, ForeignKey('analyse_sous_traitee.id'), nullable=True)  # Nouvelle clé étrangère
+    #partie_sous_traitee = Column(String, nullable=True)  # Type de partie sous-traitée (ex. "spermogramme", "bactériologie", "NFS", "groupage")
+    #partie_id = Column(Integer, nullable=True)  # ID de la partie sous-traitée dans sa table respective
+    date_sous_traitance = Column(DateTime, nullable=True, default=datetime.now)  # Date de la sous-traitance
+    cout_sous_traitance = Column(Float, nullable=True)
+    statut = Column(String, nullable=True, default="en_cours")  # Statut : "en_cours", "terminee", "annulee"
+    notes = Column(TEXT, nullable=True)  # Notes supplémentaires
+    created_at = Column(DateTime, nullable=True, default=datetime.now)  # Date de création
+    updated_at = Column(DateTime, nullable=True, default=datetime.now, onupdate=datetime.now)  # Dernière mise à jour
+
+    # Relations
+    labo_sous_traitant = relationship("LaboratoireSousTraitant", backref="sous_traitances")  # Relation avec LaboratoireSousTraitant
+    analyse = relationship("Analyse", backref="sous_traitances")  # Relation avec Analyse
+    analyse_sous_traitee = relationship("AnalyseSousTraitee", backref="sous_traitances")  # Relation avec AnalyseSousTraitee
+    def __repr__(self):
+        return (f"<SousTraitance(id={self.id}, labo_sous_traitant_id={self.labo_sous_traitant_id}, "
+                f"analyse_id={self.analyse_id}, analyse_sous_traitee_id={self.analyse_sous_traitee_id}, "
+                f"cout_sous_traitance={self.cout_sous_traitance}, statut='{self.statut}', "
+                f"date_sous_traitance='{self.date_sous_traitance}')>")
+
+class AnalyseSousTraitee(Base):
+    __tablename__ = 'analyse_sous_traitee'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    nom = Column(String, nullable=False)  # 
+    type_analyse = Column(String, nullable=False)  # 
+    prix = Column(Float, nullable=False)  # 
+
+
+class FactureSousTraitance(Base):
+    __tablename__ = 'facture_sous_traitance'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    analyse_id = Column(Integer, ForeignKey('analyses.id'), nullable=False)  # Associer une facture à un analyse_id
+
+    # Relation automatique avec SousTraitance
+    sous_traitances = relationship(
+        "SousTraitance",
+        primaryjoin="FactureSousTraitance.analyse_id == foreign(SousTraitance.analyse_id)"
+    )
+
+    cout_sous_traitance_total = Column(Float, nullable=True)  # Coût total
+    statut = Column(String, nullable=True, default="non_payé")
+
+    def __repr__(self):
+        return f"<FactureSousTraitance(id={self.id}, analyse_id={self.analyse_id}, total={self.cout_sous_traitance_total}, statut='{self.statut}')>"
+
+# Ajout des index pour optimiser les performances
+Index('idx_patient_barcode', Patient.patient_barcode)
+Index('idx_analyse_dossier_barcode', Analyse.dossier_barcode)
+Index('idx_resultat_analyse_id', Resultat.analyse_id)
+Index('idx_resultat_parameter_id', Resultat.parameter_id)
+Index('idx_analyse_detail_analyse_id', AnalyseDetail.analyse_id)
+Index('idx_analyse_detail_parameter_id', AnalyseDetail.parameter_id)
+Index('idx_analyse_patient_id', Analyse.patient_id)
+Index('idx_parameter_categorie_id', Parameter.categorie_id)
+Index('idx_product_supplier_id', Product.supplier_id)
+Index('idx_facture_achat_fournisseur_id', FactureAchat.fournisseur_id)
