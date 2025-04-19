@@ -1,9 +1,14 @@
 from flask import Flask, render_template
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, joinedload
 from models import Patient, Analyse, Resultat  # Importez vos modèles SQLAlchemy
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
 import os
+import logging
+
+# Configuration des logs
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 
@@ -32,8 +37,9 @@ def get_results(patient_barcode):
     session = Session()
     try:
         # Rechercher le patient par son code-barres
-        patient = session.query(Patient).filter_by(patient_barcode=patient_barcode).first()
+        patient = (session.query(Patient).options(joinedload(Patient.analyses)).filter_by(patient_barcode=patient_barcode).first())
         if not patient:
+            logger.warning(f"Patient non trouvé : {patient_barcode}")
             return "Patient non trouvé", 404
 
         # Récupérer toutes les analyses associées au patient
@@ -42,9 +48,10 @@ def get_results(patient_barcode):
             .filter_by(patient_id=patient.id)
             .all()
         )
-
         if not analyses:
+            logger.info(f"Aucun résultat disponible pour le patient : {patient_barcode}")
             return "Aucun résultat disponible pour ce patient.", 404
+       
 
         # Formater les résultats pour chaque analyse
         formatted_results = []
@@ -69,7 +76,7 @@ def get_results(patient_barcode):
                 analysis_types.append("Soustraitance")
 
             # Récupérer les résultats spécifiques pour cette analyse
-            resultats = session.query(Resultat).filter_by(analyse_id=analyse.id).all()
+            resultats = (session.query(Resultat).options(joinedload(Resultat.parameter)).filter_by(analyse_id=analyse.id).all())
             formatted_resultats = [
                 {
                     "parameter": resultat.parameter.param,
@@ -97,6 +104,7 @@ def get_results(patient_barcode):
         )
 
     except Exception as e:
+        logger.error(f"Erreur lors du traitement de la requête : {str(e)}")
         return f"Erreur : {str(e)}", 500
     finally:
         session.close()
